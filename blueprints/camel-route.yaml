@@ -1,0 +1,62 @@
+# Camel YAML Blueprint Example
+#
+# This is an alternative way to define Camel routes using YAML configuration.
+# Place this file in src/main/resources/camel/ directory to be auto-discovered.
+#
+# To use YAML blueprints:
+# 1. Copy this file to src/main/resources/camel/
+# 2. Rebuild the application: mvn clean package
+#
+# YAML supports a subset of Camel's DSL and is great for simple routes.
+#
+# For more complex routing, use XML or Java-based routes.
+
+routes:
+  - id: "yaml-file-processor-route"
+    description: "Process text files from input directory and convert to uppercase"
+    
+    from:
+      uri: "{{camel.input.dir}}"
+      parameters:
+        move: "{{camel.input.dir}}/.camel-moved"
+        include: ".*\\.txt"
+      
+    steps:
+      - log:
+          message: "YAML: Received file: ${header.CamelFileName}"
+      
+      - log:
+          message: "YAML: File content: ${body}"
+          
+      - process:
+          id: "yamlUppercaseProcessor"
+          type: "org.example.camel.UppercaseProcessor"
+          
+      - to:
+          uri: "{{camel.output.dir}}"
+          parameters:
+            fileName: "${header.CamelFileName}"
+            
+      - to:
+          uri: "{{camel.archive.dir}}"
+          parameters:
+            fileName: "${header.CamelFileName}"
+            fileExist: "Override"
+            
+      - to:
+          uri: "{{camel.input.dir}}/.camel/processed"
+          parameters:
+            fileName: "${header.CamelFileName}"
+            
+      - log:
+          message: "YAML: File processed and archived: ${header.CamelFileName}"
+
+  - id: "yaml-health-check"
+    description: "Provide health status via direct endpoint"
+    
+    from:
+      uri: "direct:health"
+      
+    steps:
+      - setBody:
+          constant: '{"status":"UP","checks":[{"name":"yaml-file-processor","status":"UP"}]}'

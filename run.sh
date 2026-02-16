@@ -54,12 +54,55 @@ build_image() {
         exit 1
     fi
     
+    # Copy blueprints to Camel resources if they exist
+    copy_blueprints
+    
     if ! podman build -t "$IMAGE_NAME" .; then
         log_error "Failed to build container image"
         exit 1
     fi
     
     log_info "Container image built successfully: $IMAGE_NAME"
+}
+
+# Copy blueprints to Camel resources
+copy_blueprints() {
+    log_info "Checking for blueprints..."
+    
+    if [[ ! -d "blueprints" ]]; then
+        log_info "No blueprints directory found, skipping blueprint copy"
+        return 0
+    fi
+    
+    # Create Camel resources directory if it doesn't exist
+    local camel_resources="src/main/resources/camel"
+    mkdir -p "$camel_resources"
+    
+    # Copy XML blueprint if it exists
+    if [[ -f "blueprints/camel-route.xml" ]]; then
+        log_info "Copying XML blueprint to $camel_resources/"
+        cp blueprints/camel-route.xml "$camel_resources/"
+    fi
+    
+    # Copy YAML blueprint if it exists
+    if [[ -f "blueprints/camel-route.yaml" ]]; then
+        log_info "Copying YAML blueprint to $camel_resources/"
+        cp blueprints/camel-route.yaml "$camel_resources/"
+    fi
+    
+    # List copied files
+    if [[ -d "$camel_resources" ]]; then
+        local copied_files
+        copied_files=$(find "$camel_resources" -type f \( -name "*.xml" -o -name "*.yaml" \) 2>/dev/null)
+        if [[ -n "$copied_files" ]]; then
+            log_info "Blueprint files in $camel_resources/:"
+            echo "$copied_files" | while read -r file; do
+                log_info "  - $(basename "$file")"
+            done
+        fi
+    fi
+    
+    log_info "Blueprint copy complete"
 }
 
 # Stop and remove existing container if it exists

@@ -1,3 +1,6 @@
+---
+{}
+---
 # Camel Quarkus Podman Container
 
 A Camel-Quarkus application running in a Podman container with persistent storage for file processing.
@@ -5,6 +8,7 @@ A Camel-Quarkus application running in a Podman container with persistent storag
 ## Overview
 
 This project demonstrates:
+
 - Apache Camel Quarkus for enterprise integration patterns
 - Podman containerization with JAR deployment (Java 17)
 - Persistent storage via volume mounting to the `deploy` directory
@@ -19,6 +23,10 @@ podman-camel-quarkus/
 │   └── HealthResource.java      # REST health check endpoint
 ├── src/main/resources/
 │   └── application.properties   # Application configuration
+├── blueprints/                  # External route definitions
+│   ├── camel-route.xml          # XML-based Camel routes
+│   ├── camel-route.yaml         # YAML-based Camel routes
+│   └── README.md                # Blueprint usage documentation
 ├── deploy/                       # Persistent storage directory
 │   ├── input/                   # Files to process (mounted volume)
 │   ├── output/                  # Processed files (mounted volume)
@@ -32,6 +40,7 @@ podman-camel-quarkus/
 ## Directory Structure
 
 The `deploy` folder contains three subdirectories:
+
 - **input/** - Place files here for processing
 - **output/** - Processed files appear here (converted to uppercase)
 - **archive/** - Original files are archived here after processing
@@ -82,23 +91,23 @@ podman-compose up -d
 
 ## Using the Application
 
-### 1. Place a file in the input directory:
+### 1\. Place a file in the input directory:
 
 ```bash
 echo "Hello, Camel Quarkus!" > deploy/input/test.txt
 ```
 
-### 2. View the logs:
+### 2\. View the logs:
 
 ```bash
 podman logs -f podman-camel-quarkus
 ```
 
-### 3. Check the output:
+### 3\. Check the output:
 
 Processed files appear in `deploy/output/` with content converted to uppercase.
 
-### 4. Check archived files:
+### 4\. Check archived files:
 
 Original files are moved to `deploy/archive/`.
 
@@ -146,28 +155,65 @@ mvn quarkus:dev
 
 The application can be configured via environment variables:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | 8080 | HTTP port |
-| `CAMEL_INPUT_DIR` | /home/quarkus/deploy/input | Input directory path |
-| `CAMEL_OUTPUT_DIR` | /home/quarkus/deploy/output | Output directory path |
-| `CAMEL_ARCHIVE_DIR` | /home/quarkus/deploy/archive | Archive directory path |
+| Variable            | Default                      | Description             |
+|---------------------|------------------------------|-------------------------|
+| `PORT`              | 8080                         | HTTP port               |
+| `CAMEL_INPUT_DIR`   | /home/quarkus/deploy/input   | Input directory path    |
+| `CAMEL_OUTPUT_DIR`  | /home/quarkus/deploy/output  | Output directory path   |
+| `CAMEL_ARCHIVE_DIR` | /home/quarkus/deploy/archive | Archive directory path  |
 
 ## Camel Routes
 
 The application uses the following routes:
 
-1. **file-processor-route** - Monitors input directory for `.txt` files, processes them (converts to uppercase), and archives originals
-2. **health-check** - Provides health status via direct endpoint
+1.  **file-processor-route** - Monitors input directory for `.txt` files, processes them (converts to uppercase), and archives originals
+2.  **health-check** - Provides health status via direct endpoint
 
 ## Application Properties
 
-| Property | Value | Description |
-|----------|-------|-------------|
-| `quarkus.application.name` | podman-camel-quarkus | Application name |
-| `camel.context.name` | podman-camel-context | Camel context name |
-| `quarkus.log.level` | INFO | Log level |
-| `quarkus.micrometer.enabled` | true | Metrics enabled |
+| Property                     | Value                | Description         |
+|------------------------------|----------------------|---------------------|
+| `quarkus.application.name`   | podman-camel-quarkus | Application name    |
+| `camel.context.name`         | podman-camel-context | Camel context name  |
+| `quarkus.log.level`          | INFO                 | Log level           |
+| `quarkus.micrometer.enabled` | true                 | Metrics enabled     |
+
+## Blueprints
+
+The `blueprints/` directory contains example Camel route definitions in different formats:
+
+| File | Format | Description |
+|------|--------|-------------|
+| `camel-route.xml` | XML | XML-based Camel routes using Spring XML namespace |
+| `camel-route.yaml` | YAML | YAML-based Camel routes for simple routing scenarios |
+
+### Using Blueprints
+
+Blueprint files in the `blueprints/` directory are automatically copied to `src/main/resources/camel/` during build by the `run.sh` script.
+
+The `run.sh` deployment script handles blueprint copying automatically:
+- Checks for `blueprints/camel-route.xml` and copies it to `src/main/resources/camel/`
+- Checks for `blueprints/camel-route.yaml` and copies it to `src/main/resources/camel/`
+- Creates the destination directory if needed
+
+To use a specific blueprint, simply ensure it exists in the `blueprints/` directory and run:
+
+```bash
+./run.sh
+```
+
+For detailed instructions, see [blueprints/README.md](blueprints/README.md).
+
+### Blueprint Comparison
+
+| Feature | Java Routes | XML Routes | YAML Routes |
+|---------|-------------|------------|-------------|
+| Type Safety | ✅ Yes | ❌ No | ❌ No |
+| IDE Autocomplete | ✅ Yes | ⚠️ Limited | ⚠️ Limited |
+| No Recompilation | ❌ No | ✅ Yes* | ✅ Yes* |
+| Human-readable | ⚠️ Moderate | ❌ Verbose | ✅ Concise |
+
+*Requires file watcher configuration
 
 ## Deployment Information
 

@@ -72,6 +72,20 @@
             <version>${camel-quarkus.version}</version>
         </dependency>
 
+        <!-- XML Blueprint support for Camel routes -->
+        <dependency>
+            <groupId>org.apache.camel.quarkus</groupId>
+            <artifactId>camel-quarkus-xml</artifactId>
+            <version>${camel-quarkus.version}</version>
+        </dependency>
+
+        <!-- YAML Blueprint support for Camel routes -->
+        <dependency>
+            <groupId>org.apache.camel.quarkus</groupId>
+            <artifactId>camel-quarkus-yaml</artifactId>
+            <version>${camel-quarkus.version}</version>
+        </dependency>
+
         <!-- Metrics -->
         <dependency>
             <groupId>io.quarkus</groupId>

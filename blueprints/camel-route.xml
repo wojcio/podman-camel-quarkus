@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+    Camel XML Blueprint Example
+    
+    This is an alternative way to define Camel routes using XML configuration.
+    Place this file in src/main/resources/camel/ directory to be auto-discovered.
+    
+    To use XML blueprints:
+    1. Copy this file to src/main/resources/camel/
+    2. Rebuild the application: mvn clean package
+-->
+
+<routes xmlns="http://camel.apache.org/schema/spring"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+            http://camel.apache.org/schema/spring
+            http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+    <!-- 
+        File Processor Route (XML version)
+        Same functionality as Java-based CamelRoute.java
+    -->
+    <route id="xml-file-processor-route">
+        <from uri="file:${camel.input.dir}?move=${camel.input.dir}/.camel-moved&amp;include=.*\.txt"/>
+        <log message="XML: Received file: ${header.CamelFileName}"/>
+        <log message="XML: File content: ${body}"/>
+        
+        <!-- Process the file content - convert to uppercase -->
+        <process id="uppercaseProcessor">
+            <bean class="org.example.camel.UppercaseProcessor"/>
+        </process>
+        
+        <!-- Save processed file to output directory -->
+        <to uri="file:${camel.output.dir}?fileName=${header.CamelFileName}"/>
+        
+        <!-- Archive the original file -->
+        <to uri="file:${camel.archive.dir}?fileName=${header.CamelFileName}&amp;fileExist=Override"/>
+        
+        <!-- Store processed file in .camel subdirectory -->
+        <to uri="file:${camel.input.dir}/.camel/processed?fileName=${header.CamelFileName}"/>
+        
+        <log message="XML: File processed and archived: ${header.CamelFileName}"/>
+    </route>
+
+    <!-- 
+        Health Check Route (XML version)
+        Provides health status via direct endpoint
+    -->
+    <route id="xml-health-check">
+        <from uri="direct:health"/>
+        <setBody>
+            <constant>{"status":"UP","checks":[{"name":"xml-file-processor","status":"UP"}]}</constant>
+        </setBody>
+    </route>
+
+</routes>
