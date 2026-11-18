@@ -18,9 +18,9 @@ RUN mvn -B clean package -DskipTests
 # Runtime stage - minimal footprint with Java
 FROM registry.access.redhat.com/ubi9-minimal:latest
 
-# Install necessary components including Java
+# Install necessary components including Java and curl
 RUN microdnf update -y && \
-    microdnf install -y shadow-utils java-17-openjdk-headless curl-minimal && \
+    microdnf install -y shadow-utils java-17-openjdk-headless curl-minimal sqlite && \
     microdnf clean all
 
 # Create non-root user
@@ -44,8 +44,8 @@ COPY --from=build /build/target/quarkus-app/ /home/quarkus/app/
 # Switch to non-root user
 USER quarkus
 
-# Expose the HTTP port
-EXPOSE 8080
+# Expose HTTP ports (8080 for health endpoints, 8081 for Bookshop API)
+EXPOSE 8080 8081
 
 # Set environment variables
 ENV PORT=8080 \

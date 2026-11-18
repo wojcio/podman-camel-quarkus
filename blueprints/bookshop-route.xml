@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+    Camel XML Blueprint - REST Bookshop API with Netty and SQLite
+    
+    This blueprint demonstrates a complete RESTful Bookshop API using:
+    - Netty HTTP component for REST endpoints
+    - JDBC component with SQLite database for data persistence
+    - Jackson for JSON serialization/deserialization
+    
+    Route Endpoints:
+    - GET    /api/books          - List all books
+    - GET    /api/books/{id}     - Get book by ID
+    - POST   /api/books          - Create new book
+    - PUT    /api/books/{id}     - Update existing book
+    - DELETE /api/books/{id}     - Delete book by ID
+    
+    To use this blueprint:
+    1. Copy to src/main/resources/camel/ directory
+    2. Ensure SQLite database file exists at deploy/bookshop.db
+    3. Rebuild the application
+-->
+
+<routes xmlns="http://camel.apache.org/schema/spring"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+            http://camel.apache.org/schema/spring
+            http://camel.apache.org/schema/spring/camel-spring.xsd">
+
+    <!-- 
+        Database Initialization Route
+        Creates the books table if it doesn't exist and seeds sample data
+    -->
+    <route id="bookshop-db-init">
+        <from uri="direct:dbInit"/>
+        
+        <!-- Create books table -->
+        <setBody>
+            <constant>COPY</constant>
+        </setBody>
+        <to uri="jdbc:bookshopDataSource?statement=CREATE TABLE IF NOT EXISTS books (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title VARCHAR(255) NOT NULL,
+            author VARCHAR(255) NOT NULL,
+            isbn VARCHAR(20) UNIQUE,
+            price DECIMAL(10,2) NOT NULL,
+            stock INTEGER DEFAULT 0,
+            genre VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"/>
+        
+        <!-- Seed sample data if table is empty -->
+        <choice>
+            <when>
+                <simple>${body} = 'COPY'</simple>
+                <!-- Check if table has data -->
+                <to uri="jdbc:bookshopDataSource?statement=SELECT COUNT(*) as cnt FROM books&amp;outputType=SelectOne"/>
+                
+                <choice>
+                    <when>
+                        <simple>${body} == 0</simple>
+                        <!-- Insert sample books -->
+                        <log message="Seeding database with sample books..."/>
+                        
+                        <!-- Book 1: Modern Java book -->
+                        <to uri="jdbc:bookshopDataSource?statement=INSERT INTO books (title, author, isbn, price, stock, genre) VALUES ('Modern Java in Action', 'Raoul-Gabriel Urma', '978-1788399672', 45.99, 25, 'Programming')"/>
+                        
+                        <!-- Book 2: Camel book -->
+                        <to uri="jdbc:bookshopDataSource?statement=INSERT INTO books (title, author, isbn, price, stock, genre) VALUES ('Apache Camel in Action', 'Christian Posta', '978-1617293407', 39.99, 15, 'Integration')"/>
+                        
+                        <!-- Book 3: Quarkus book -->
+                        <to uri="jdbc:bookshopDataSource?statement=INSERT INTO books (title, author, isbn, price, stock, genre) VALUES ('Quarkus in Action', 'Ken Finnigan', '978-1617297436', 54.99, 30, 'Cloud Native')"/>
+                        
+                        <!-- Book 4: Kubernetes book -->
+                        <to uri="jdbc:bookshopDataSource?statement=INSERT INTO books (title, author, isbn, price, stock, genre) VALUES ('Kubernetes Up and Running', 'Kelsey Hightower', '978-1492046530', 49.99, 20, 'DevOps')"/>
+                        
+                        <!-- Book 5: Microservices book -->
+                        <to uri="jdbc:bookshopDataSource?statement=INSERT INTO books (title, author, isbn, price, stock, genre) VALUES ('Building Microservices', 'Sam Newman', '978-1491950357', 52.99, 18, 'Architecture')"/>
+                        
+                        <log message="Sample books seeded successfully!"/>
+                    </when>
+                    <otherwise>
+                        <log message="Database already has data, skipping seed"/>
+                    </otherwise>
+                </choice>
+            </when>
+        </choice>
+    </route>
+
+    <!-- 
+        REST API Routes using Netty HTTP
+        
+        GET /api/books - List all books
+    -->
+    <route id="bookshop-list-books">
+        <from uri="netty-http:0.0.0.0:8081?httpChannelPoolSize=20&amp;allowNullValue=true"/>
+        
+        <!-- Route only API requests -->
+        <choice>
+            <when>
+                <simple>${header.CamelHttpPath} STARTS WITH '/api/books'</simple>
+                
+                <!-- Handle different HTTP methods -->
+                <choice>
+                    <!-- GET /api/books - List all books -->
+                    <when>
+                        <simple>${header.CamelHttpMethod} == 'GET' and ${header.CamelHttpPath} == '/api/books'</simple>
+                        <log message="Received GET /api/books"/>
+                        
+                        <!-- Query all books from database -->
+                        <to uri="jdbc:bookshopDataSource?statement=SELECT * FROM books ORDER BY id&amp;outputClass=org.apache.camel.component.jdbc.JdbcMessage"/>
+                        
+                        <!-- Convert result to JSON array -->
+                        <setHeader name="CamelHttpResult" constant="true"/>
+                        <to uri="jackson:readListFromJson?contentTypeApplicationJson=true"/>
+                        
+                        <!-- Build JSON response -->
+                        <setHeader name="CamelHttpResponseCode" constant="200"/>
+                        <setHeader name="Content-Type" constant="application/json"/>
+                        
+                    </when>
+                    
+                    <!-- GET /api/books/{id} - Get book by ID -->
+                    <when>
+                        <simple>${header.CamelHttpPath} MATCHES '/api/books/\\d+'</simple>
+                        <log message="Received GET /api/books/{id}"/>
+                        
+                        <!-- Extract book ID from path -->
+                        <setHeader name="bookId">
+                            <simple>${header.CamelHttpPath.substring(12)}</simple>
+                        </setHeader>
+                        
+                        <!-- Query book by ID -->
+                        <to uri="jdbc:bookshopDataSource?statement=SELECT * FROM books WHERE id = ${header.bookId}&amp;outputClass=org.apache.camel.component.jdbc.JdbcMessage"/>
+                        
+                        <!-- Check if book exists -->
+                        <choice>
+                            <when>
+                                <simple>${body} != null</simple>
+                                <!-- Convert to JSON -->
+                                <to uri="jackson:toJson"/>
+                                <setHeader name="CamelHttpResponseCode" constant="200"/>
+                                <setHeader name="Content-Type" constant="application/json"/>
+                            </when>
+                            <otherwise>
+                                <!-- Book not found -->
+                                <setBody>
+                                    <simple>{"error": "Book not found with id: ${header.bookId}"}</simple>
+                                </setBody>
+                                <setHeader name="CamelHttpResponseCode" constant="404"/>
+                                <setHeader name="Content-Type" constant="application/json"/>
+                            </otherwise>
+                        </choice>
+                    </when>
+                    
+                    <!-- POST /api/books - Create new book -->
+                    <when>
+                        <simple>${header.CamelHttpMethod} == 'POST'</simple>
+                        <log message="Received POST /api/books"/>
+                        
+                        <!-- Parse JSON body -->
+                        <to uri="jackson:fromJson?type=java.lang.String"/>
+                        
+                        <!-- Extract book data -->
+                        <setHeader name="title">
+                            <simple>${body.title}</simple>
+                        </setHeader>
+                        <setHeader name="author">
+                            <simple>${body.author}</simple>
+                        </setHeader>
+                        <setHeader name="isbn">
+                            <simple>${body.isbn}</simple>
+                        </setHeader>
+                        <setHeader name="price">
+                            <simple>${body.price}</simple>
+                        </setHeader>
+                        <setHeader name="stock">
+                            <simple>${body.stock}</simple>
+                        </setHeader>
+                        <setHeader name="genre">
+                            <simple>${body.genre}</simple>
+                        </setHeader>
+                        
+                        <!-- Insert book into database -->
+                        <to uri="jdbc:bookshopDataSource?statement=INSERT INTO books (title, author, isbn, price, stock, genre) VALUES (${header.title}, ${header.author}, ${header.isbn}, ${header.price}, ${header.stock}, ${header.genre})"/>
+                        
+                        <!-- Get the ID of the inserted book -->
+                        <to uri="jdbc:bookshopDataSource?statement=SELECT last_insert_rowid() as id&amp;outputType=SelectOne"/>
+                        
+                        <!-- Build response -->
+                        <setHeader name="CamelHttpResponseCode" constant="201"/>
+                        <setHeader name="Content-Type" constant="application/json"/>
+                        <to uri="jackson:toJson"/>
+                    </when>
+                    
+                    <!-- PUT /api/books/{id} - Update existing book -->
+                    <when>
+                        <simple>${header.CamelHttpMethod} == 'PUT'</simple>
+                        <log message="Received PUT /api/books/{id}"/>
+                        
+                        <!-- Extract book ID from path -->
+                        <setHeader name="bookId">
+                            <simple>${header.CamelHttpPath.substring(12)}</simple>
+                        </setHeader>
+                        
+                        <!-- Parse JSON body -->
+                        <to uri="jackson:fromJson?type=java.lang.String"/>
+                        
+                        <!-- Extract book data -->
+                        <setHeader name="title">
+                            <simple>${body.title}</simple>
+                        </setHeader>
+                        <setHeader name="author">
+                            <simple>${body.author}</simple>
+                        </setHeader>
+                        <setHeader name="isbn">
+                            <simple>${body.isbn}</simple>
+                        </setHeader>
+                        <setHeader name="price">
+                            <simple>${body.price}</simple>
+                        </setHeader>
+                        <setHeader name="stock">
+                            <simple>${body.stock}</simple>
+                        </setHeader>
+                        <setHeader name="genre">
+                            <simple>${body.genre}</simple>
+                        </setHeader>
+                        
+                        <!-- Update book in database -->
+                        <to uri="jdbc:bookshopDataSource?statement=UPDATE books SET title = ${header.title}, author = ${header.author}, isbn = ${header.isbn}, price = ${header.price}, stock = ${header.stock}, genre = ${header.genre}, updated_at = CURRENT_TIMESTAMP WHERE id = ${header.bookId}"/>
+                        
+                        <!-- Check if update was successful -->
+                        <choice>
+                            <when>
+                                <simple>${body} &gt; 0</simple>
+                                <!-- Get updated book -->
+                                <to uri="jdbc:bookshopDataSource?statement=SELECT * FROM books WHERE id = ${header.bookId}&amp;outputClass=org.apache.camel.component.jdbc.JdbcMessage"/>
+                                <to uri="jackson:toJson"/>
+                                <setHeader name="CamelHttpResponseCode" constant="200"/>
+                                <setHeader name="Content-Type" constant="application/json"/>
+                            </when>
+                            <otherwise>
+                                <setBody>
+                                    <simple>{"error": "Book not found with id: ${header.bookId}"}</simple>
+                                </setBody>
+                                <setHeader name="CamelHttpResponseCode" constant="404"/>
+                                <setHeader name="Content-Type" constant="application/json"/>
+                            </otherwise>
+                        </choice>
+                    </when>
+                    
+                    <!-- DELETE /api/books/{id} - Delete book -->
+                    <when>
+                        <simple>${header.CamelHttpMethod} == 'DELETE' and ${header.CamelHttpPath} MATCHES '/api/books/\\d+'</simple>
+                        <log message="Received DELETE /api/books/{id}"/>
+                        
+                        <!-- Extract book ID from path -->
+                        <setHeader name="bookId">
+                            <simple>${header.CamelHttpPath.substring(12)}</simple>
+                        </setHeader>
+                        
+                        <!-- Delete book from database -->
+                        <to uri="jdbc:bookshopDataSource?statement=DELETE FROM books WHERE id = ${header.bookId}"/>
+                        
+                        <!-- Check if deletion was successful -->
+                        <choice>
+                            <when>
+                                <simple>${body} &gt; 0</simple>
+                                <setBody>
+                                    <simple>{"message": "Book deleted successfully"}</simple>
+                                </setBody>
+                                <setHeader name="CamelHttpResponseCode" constant="200"/>
+                                <setHeader name="Content-Type" constant="application/json"/>
+                            </when>
+                            <otherwise>
+                                <setBody>
+                                    <simple>{"error": "Book not found with id: ${header.bookId}"}</simple>
+                                </setBody>
+                                <setHeader name="CamelHttpResponseCode" constant="404"/>
+                                <setHeader name="Content-Type" constant="application/json"/>
+                            </otherwise>
+                        </choice>
+                    </when>
+                    
+                    <!-- Method not allowed -->
+                    <otherwise>
+                        <setBody>
+                            <simple>{"error": "Method not allowed"}</simple>
+                        </setBody>
+                        <setHeader name="CamelHttpResponseCode" constant="405"/>
+                        <setHeader name="Content-Type" constant="application/json"/>
+                    </otherwise>
+                </choice>
+                
+            </when>
+            
+            <!-- Health check endpoint -->
+            <when>
+                <simple>${header.CamelHttpPath} == '/health/live' or ${header.CamelHttpPath} == '/health/ready'</simple>
+                <setBody>
+                    <constant>{"status":"UP","checks":[{"name":"bookshop-api","status":"UP"}]}</constant>
+                </setBody>
+                <setHeader name="CamelHttpResponseCode" constant="200"/>
+                <setHeader name="Content-Type" constant="application/json"/>
+            </when>
+            
+            <!-- Root endpoint - API info -->
+            <when>
+                <simple>${header.CamelHttpPath} == '/'</simple>
+                <setBody>
+                    <constant>{
+  "name": "Camel Quarkus Bookshop API",
+  "version": "1.0.0",
+  "endpoints": {
+    "GET": "/api/books - List all books",
+    "GET": "/api/books/{id} - Get book by ID",
+    "POST": "/api/books - Create new book",
+    "PUT": "/api/books/{id} - Update existing book",
+    "DELETE": "/api/books/{id} - Delete book"
+  }
+}</constant>
+                </setBody>
+                <setHeader name="CamelHttpResponseCode" constant="200"/>
+                <setHeader name="Content-Type" constant="application/json"/>
+            </when>
+            
+            <!-- 404 for unknown routes -->
+            <otherwise>
+                <setBody>
+                    <simple>{"error": "Endpoint not found: ${header.CamelHttpPath}"}</simple>
+                </setBody>
+                <setHeader name="CamelHttpResponseCode" constant="404"/>
+                <setHeader name="Content-Type" constant="application/json"/>
+            </otherwise>
+        </choice>
+    </route>
+
+</routes>

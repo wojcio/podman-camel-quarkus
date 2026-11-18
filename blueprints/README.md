@@ -8,8 +8,98 @@ This directory contains example Camel route definitions in different formats:
 |------|--------|-------------|
 | `camel-route.xml` | XML | XML-based Camel routes using Spring XML namespace |
 | `camel-route.yaml` | YAML | YAML-based Camel routes for simple routing scenarios |
+| `bookshop-route.xml` | XML | **REST Bookshop API** with Netty HTTP and SQLite database |
 
-## How to Use These Blueprints
+## Bookshop REST API (New!) ⭐
+
+The `bookshop-route.xml` blueprint provides a complete RESTful Bookshop API using:
+- **Netty HTTP** component for REST endpoints (runs on port 8081)
+- **JDBC** component with SQLite database for data persistence
+- **Jackson** for JSON serialization/deserialization
+
+### REST Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/books` | List all books |
+| GET | `/api/books/{id}` | Get book by ID |
+| POST | `/api/books` | Create new book |
+| PUT | `/api/books/{id}` | Update existing book |
+| DELETE | `/api/books/{id}` | Delete book by ID |
+
+### Database Schema
+
+The SQLite database (`deploy/bookshop.db`) contains a `books` table:
+
+```sql
+CREATE TABLE books (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title VARCHAR(255) NOT NULL,
+    author VARCHAR(255) NOT NULL,
+    isbn VARCHAR(20) UNIQUE,
+    price DECIMAL(10,2) NOT NULL,
+    stock INTEGER DEFAULT 0,
+    genre VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+```
+
+### Sample Data
+
+On first run, the database is seeded with 5 sample books:
+1. Modern Java in Action
+2. Apache Camel in Action
+3. Quarkus in Action
+4. Kubernetes Up and Running
+5. Building Microservices
+
+### Example Usage
+
+**List all books:**
+```bash
+curl http://localhost:8081/api/books
+```
+
+**Get a specific book:**
+```bash
+curl http://localhost:8081/api/books/1
+```
+
+**Create a new book:**
+```bash
+curl -X POST http://localhost:8081/api/books \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "New Book",
+    "author": "Author Name",
+    "isbn": "123-4567890123",
+    "price": 29.99,
+    "stock": 10,
+    "genre": "Fiction"
+  }'
+```
+
+**Update a book:**
+```bash
+curl -X PUT http://localhost:8081/api/books/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Updated Title",
+    "author": "Author Name",
+    "isbn": "978-1788399672",
+    "price": 39.99,
+    "stock": 20,
+    "genre": "Programming"
+  }'
+```
+
+**Delete a book:**
+```bash
+curl -X DELETE http://localhost:8081/api/books/1
+```
+
+## How to Use Blueprints
 
 ### Option 1: Copy to Source Directory (Recommended for Development)
 
@@ -20,6 +110,9 @@ This directory contains example Camel route definitions in different formats:
    
    # For YAML blueprint
    cp blueprints/camel-route.yaml src/main/resources/camel/
+   
+   # For Bookshop API (Java implementation is auto-loaded)
+   # The bookshop-route.xml is for reference - use BookshopRoute.java
    ```
 
 2. **Rebuild the application**:
@@ -41,6 +134,7 @@ This directory contains example Camel route definitions in different formats:
    podman run -d \
      --name podman-camel-quarkus \
      -p 8080:8080 \
+     -p 8081:8081 \
      -v $(pwd)/deploy:/home/quarkus/deploy:Z \
      --network camel-network \
      -e PORT=8080 \
@@ -80,9 +174,13 @@ For XML blueprints, you can use Camel's file watcher feature:
 - **Pros**: Concise, human-readable
 - **Cons**: Limited DSL support, less IDE support
 
+### Bookshop API (`BookshopRoute.java`)
+- **Pros**: Full REST API, database persistence, CRUD operations ready-to-use
+- **Cons**: Requires Java recompilation for changes
+
 ## Configuration Properties
 
-All blueprints use the following environment variables:
+### File Processor Routes (camel-route.xml/yaml)
 
 | Property | Default | Description |
 |----------|---------|-------------|
@@ -90,7 +188,15 @@ All blueprints use the following environment variables:
 | `camel.output.dir` | `/home/quarkus/deploy/output` | Output directory for processed files |
 | `camel.archive.dir` | `/home/quarkus/deploy/archive` | Archive directory for original files |
 
-## Example Flow
+### Bookshop API Configuration
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `quarkus.http.port` | 8080 | Health endpoints port |
+| `quarkus.netty.ports` | 8081 | Bookshop API Netty port |
+| `quarkus.datasource.jdbc.url` | jdbc:sqlite:deploy/bookshop.db | SQLite database path |
+
+## Example Flow - File Processor
 
 When a file is placed in the input directory:
 
@@ -111,8 +217,20 @@ When a file is placed in the input directory:
 - Ensure environment variables are set correctly in the container
 - Use `${property.name}` syntax for placeholders
 
+### Bookshop API not responding on port 8081
+- Verify the container exposes port 8081: `podman port podman-camel-quarkus`
+- Check if Netty is bound: `podman exec podman-camel-quarkus netstat -tlnp`
+- Review logs: `podman logs podman-camel-quarkus | grep -i netty`
+
+### SQLite database issues
+- Ensure `deploy/` directory is writable
+- Check if bookshop.db file exists: `ls -la deploy/bookshop.db`
+- View database schema: `sqlite3 deploy/bookshop.db ".schema"`
+
 ## See Also
 
 - [Camel Quarkus Documentation](https://camel.apache.org/camel-quarkus/latest/)
 - [XML Routes](https://camel.apache.org/camel-quarkus/latest/alternatives/xml.html)
 - [YAML Routes](https://camel.apache.org/camel-quarkus/latest/alternatives/yaml.html)
+- [Netty HTTP Component](https://camel.apache.org/components/latest/netty-http-component.html)
+- [JDBC Component](https://camel.apache.org/components/latest/jdbc-component.html)
